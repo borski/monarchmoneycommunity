@@ -215,6 +215,10 @@ As of writing this README, the following methods are supported:
       <td>gets cashflow summary (income, expense, savings, savings rate)</td>
     </tr>
     <tr>
+      <td><code>get_goal_options</code></td>
+      <td>gets the preset Savings Goal templates (Emergency fund, Down payment, Custom, ...)</td>
+    </tr>
+    <tr>
       <td><code>is_accounts_refresh_complete</code></td>
       <td>gets the status of a running account refresh</td>
     </tr>
