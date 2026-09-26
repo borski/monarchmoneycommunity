@@ -155,6 +155,14 @@ As of writing this README, the following methods are supported:
       <td>all the budgets and the corresponding actual amounts</td>
     </tr>
     <tr>
+      <td><code>get_savings_goals</code></td>
+      <td>gets all Savings Goals, including archived ones (filter on <code>status == "archived"</code> or <code>archivedAt</code>)</td>
+    </tr>
+    <tr>
+      <td><code>get_savings_goal</code></td>
+      <td>gets a single Savings Goal by id</td>
+    </tr>
+    <tr>
       <td><code>get_credit_history</code></td>
       <td>gets credit score snapshots and Spinwheel user details</td>
     </tr>
