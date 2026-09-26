@@ -2880,6 +2880,121 @@ class MonarchMoney(object):
             graphql_query=query,
         )
 
+    async def get_goal_accounts_allocation_summary(self) -> Dict[str, Any]:
+        """
+        Gets, per account, the total balance, the balance not yet allocated
+        to any savings goal, and the split of the balance by goal.
+        """
+        query = gql(
+            """
+            query Common_SavingsGoalAccountsAllocationSummary {
+              goalAccountsAllocationSummary {
+                account {
+                  id
+                  logoUrl
+                  icon
+                  displayName
+                  balanceNeedingReconciliation
+                  __typename
+                }
+                totalBalance
+                availableBalance
+                balancesByGoal {
+                  accountId
+                  goal {
+                    id
+                    ...GoalSummaryFields
+                    __typename
+                  }
+                  amount
+                  __typename
+                }
+                __typename
+              }
+            }
+
+            fragment GoalSummaryFields on SavingsGoal {
+              id
+              type
+              name
+              createdAt
+              archivedAt
+              imageStorageProvider
+              imageStorageProviderId
+              status
+              progress
+              currentBalance
+              targetDate
+              targetAmount
+              hasFutureBudgetDifferentFromCurrentMonth
+              currentMonthActualBudgetAmount
+              currentMonthPlannedContributionAmount
+              plannedMonthlyContribution
+              spendingTotal
+              netContribution
+              netContributionWithSpending
+              netContributionWithoutSpending
+              balanceThisMonth
+              estimatedMonthsUntilCompletion
+              forecastedCompletionDate
+              isSinkingFund
+              priority
+              allocationAmountsByAccount {
+                goalId
+                adjustmentAmount
+                totalAmount
+                spendingAmount
+                contributionsAmount
+                withdrawalsAmount
+                account {
+                  icon
+                  displayName
+                  displayBalance
+                  linkedGoal {
+                    id
+                    __typename
+                  }
+                  subtype {
+                    name
+                    display
+                    __typename
+                  }
+                  ...NewAccountLogoFields
+                  __typename
+                }
+                __typename
+              }
+              __typename
+            }
+
+            fragment NewAccountLogoFields on Account {
+              id
+              dataProvider
+              logoUrl
+              type {
+                name
+                display
+                __typename
+              }
+              subtype {
+                name
+                __typename
+              }
+              institution {
+                id
+                primaryColor
+                __typename
+              }
+              __typename
+            }
+            """
+        )
+
+        return await self.gql_call(
+            operation="Common_SavingsGoalAccountsAllocationSummary",
+            graphql_query=query,
+        )
+
     async def update_flexible_budget(
         self,
         amount: float,

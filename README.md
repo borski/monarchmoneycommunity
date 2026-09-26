@@ -135,6 +135,10 @@ As of writing this README, the following methods are supported:
       <td>gets all of the securities in a brokerage or similar type of account</td>
     </tr>
     <tr>
+      <td><code>get_goal_accounts_allocation_summary</code></td>
+      <td>gets each goal account's total balance, unallocated balance, and split by Savings Goal</td>
+    </tr>
+    <tr>
       <td><code>get_all_holdings</code></td>
       <td>gets the securities in every brokerage or similar type of account in one call (no parameters) — example: <code>await mm.get_all_holdings()</code></td>
     </tr>
