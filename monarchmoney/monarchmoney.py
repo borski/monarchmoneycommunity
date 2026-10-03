@@ -3778,6 +3778,33 @@ class MonarchMoney(object):
             "Web_GetUpcomingRecurringTransactionItems", query, variables
         )
 
+    async def get_goal_options(self) -> Dict[str, Any]:
+        """
+        Gets the preset Savings Goal templates offered when creating a goal
+        (e.g. Emergency fund, Down payment, Custom), with their default names,
+        objectives, types and images.
+        """
+        query = gql(
+            """
+            query Common_GoalOptions {
+              goalOptions {
+                defaultName
+                objective
+                type
+                allowMultiSelect
+                defaultImageStorageProvider
+                defaultImageStorageProviderId
+                __typename
+              }
+            }
+            """
+        )
+
+        return await self.gql_call(
+            operation="Common_GoalOptions",
+            graphql_query=query,
+        )
+
     async def get_credit_history(self) -> Dict[str, Any]:
         """
         Gets credit score history and related user details.
