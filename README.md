@@ -171,6 +171,10 @@ As of writing this README, the following methods are supported:
       <td>gets the future recurring transactions, including merchant and account details</td>
     </tr>
     <tr>
+      <td><code>get_savings_goal_budget_amounts</code></td>
+      <td>gets a savings goal's planned, actual, and remaining amounts per month (with per-account breakdown) between two months</td>
+    </tr>
+    <tr>
       <td><code>get_transactions_summary</code></td>
       <td>gets the transaction summary data from the transactions page</td>
     </tr>
@@ -302,6 +306,10 @@ As of writing this README, the following methods are supported:
     <tr>
       <td><code>set_budget_amount</code></td>
       <td>sets a budget's value to the given amount (date allowed, will only apply to month specified by default). A zero amount value will <code>unset</code> or <code>clear</code> the budget for the given category.</td>
+    </tr>
+    <tr>
+      <td><code>set_savings_goal_budget_amount</code></td>
+      <td>sets a savings goal's planned contribution for a month (applies to future months by default). Pass <code>account_id</code> for a per-account contribution; omit it for the general contribution</td>
     </tr>
     <tr>
       <td><code>update_flexible_budget</code></td>
