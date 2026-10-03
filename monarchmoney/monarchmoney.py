@@ -3888,6 +3888,77 @@ class MonarchMoney(object):
         end_of_month = now.replace(day=last_day)
         return _to_iso_date(end_of_month)
 
+    async def archive_savings_goal(self, goal_id: str) -> Dict[str, Any]:
+        """
+        Archives a savings goal.
+
+        Per Monarch's archive dialog this withdraws all allocated funds,
+        keeps the goal's history, and removes it from future budgets. It is
+        reversible with :meth:`unarchive_savings_goal`, but the withdrawn
+        allocations are not restored.
+
+        :param goal_id: The savings goal id to archive.
+        """
+        query = gql(
+            """
+            mutation Common_ArchiveSavingsGoal($input: ArchiveSavingsGoalInput!) {
+              archiveSavingsGoal(input: $input) {
+                savingsGoal {
+                  id
+                  archivedAt
+                  status
+                  __typename
+                }
+                errors {
+                  message
+                  __typename
+                }
+                __typename
+              }
+            }
+            """
+        )
+
+        return await self.gql_call(
+            operation="Common_ArchiveSavingsGoal",
+            graphql_query=query,
+            variables={"input": {"id": goal_id}},
+        )
+
+    async def unarchive_savings_goal(self, goal_id: str) -> Dict[str, Any]:
+        """
+        Unarchives a previously archived savings goal.
+
+        Allocations withdrawn when the goal was archived are not restored.
+
+        :param goal_id: The savings goal id to unarchive.
+        """
+        query = gql(
+            """
+            mutation Common_UnarchiveSavingsGoal($input: UnarchiveSavingsGoalInput!) {
+              unarchiveSavingsGoal(input: $input) {
+                savingsGoal {
+                  id
+                  archivedAt
+                  status
+                  __typename
+                }
+                errors {
+                  message
+                  __typename
+                }
+                __typename
+              }
+            }
+            """
+        )
+
+        return await self.gql_call(
+            operation="Common_UnarchiveSavingsGoal",
+            graphql_query=query,
+            variables={"input": {"id": goal_id}},
+        )
+
     async def get_transaction_rules(self) -> Dict[str, Any]:
         """
         Gets all transaction rules configured in the account.
