@@ -215,6 +215,10 @@ As of writing this README, the following methods are supported:
       <td>gets transaction splits for a single transaction</td>
     </tr>
     <tr>
+      <td><code>get_savings_goal_events</code></td>
+      <td>gets a Savings Goal's paginated event history (contributions, withdrawals), optionally filtered by <code>start_date</code>/<code>end_date</code></td>
+    </tr>
+    <tr>
       <td><code>get_transaction_tags</code></td>
       <td>gets all of the tags configured in the account</td>
     </tr>
