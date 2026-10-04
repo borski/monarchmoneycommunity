@@ -4626,8 +4626,6 @@ class MonarchMoney(object):
         "criteriaOwnerUserIds",
         "criteriaBusinessEntityIds",
         "criteriaBusinessEntityIsUnassigned",
-        "setMerchantAction",
-        "addTagsAction",
         "linkGoalAction",
         "linkSavingsGoalAction",
         "needsReviewByUserAction",
@@ -4761,8 +4759,11 @@ class MonarchMoney(object):
 
         Monarch's update mutation does not support partial updates: an input that
         omits the rule's existing criteria returns an empty error payload and
-        changes nothing. This method therefore reads the current rule first and
-        sends its existing criteria along with the fields you change.
+        changes nothing. Monarch's web app resends the whole rule on every save,
+        so this method does the same: it reads the current rule and resends its
+        criteria, category, merchant rename, and tags along with your changes.
+        Rules that link goals, split transactions, or set review status are
+        refused until those shapes are verified.
 
         :param rule_id: the id of the rule (from get_transaction_rules).
         :param set_category_id: new category id to assign when the rule matches.
@@ -4783,19 +4784,31 @@ class MonarchMoney(object):
         ]
         if unsupported:
             raise NotImplementedError(
-                "update_transaction_rule only supports rules whose action is "
-                "setting a category. This rule also uses: " + ", ".join(unsupported)
+                "update_transaction_rule can't safely round-trip these rule "
+                "fields yet: " + ", ".join(unsupported)
             )
 
         rule_input: Dict[str, Any] = {
             "id": rule_id,
             "applyToExistingTransactions": apply_to_existing_transactions,
         }
+        # Mirror what Monarch's web app sends on save: every criteria field
+        # (including nulls) plus the current actions, flattened to ids.
         for field in self._TRANSACTION_RULE_CRITERIA_FIELDS:
-            if current.get(field) is not None:
-                rule_input[field] = self._strip_typename(current[field])
-        if current.get("setCategoryAction"):
-            rule_input["setCategoryAction"] = current["setCategoryAction"]["id"]
+            rule_input[field] = self._strip_typename(current.get(field))
+        category_action = current.get("setCategoryAction")
+        merchant_action = current.get("setMerchantAction")
+        rule_input["setCategoryAction"] = category_action["id"] if category_action else None
+        # setMerchantAction takes the merchant *name*. Passing an id creates a
+        # new merchant literally named after that id.
+        rule_input["setMerchantAction"] = (
+            merchant_action["name"] if merchant_action else None
+        )
+        rule_input["addTagsAction"] = (
+            [tag["id"] for tag in current["addTagsAction"]]
+            if current.get("addTagsAction")
+            else None
+        )
 
         overrides = {
             "setCategoryAction": set_category_id,

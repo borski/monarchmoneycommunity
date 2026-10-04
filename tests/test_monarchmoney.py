@@ -637,8 +637,15 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
                 "id": "rule-1",
                 "applyToExistingTransactions": False,
                 "merchantCriteriaUseOriginalStatement": False,
+                "merchantCriteria": None,
+                "originalStatementCriteria": None,
                 "merchantNameCriteria": [{"operator": "eq", "value": "raul maciel"}],
+                "amountCriteria": None,
+                "categoryIds": None,
+                "accountIds": None,
                 "setCategoryAction": "cat-new",
+                "setMerchantAction": None,
+                "addTagsAction": None,
             },
         )
 
@@ -667,6 +674,46 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
         )
         client.gql_call = AsyncMock()
         with self.assertRaisesRegex(NotImplementedError, "setHideFromReportsAction"):
+            await client.update_transaction_rule("rule-1", set_category_id="cat-new")
+        client.gql_call.assert_not_awaited()
+
+    async def test_update_transaction_rule_keeps_merchant_and_tags(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={
+                "transactionRules": [
+                    self._rule(
+                        setMerchantAction={"id": "m-1", "name": "Darshana Avila"},
+                        addTagsAction=[{"id": "tag-1", "name": "Subscription"}],
+                    )
+                ]
+            }
+        )
+        client.gql_call = AsyncMock(
+            return_value={
+                "updateTransactionRuleV2": {
+                    "errors": None,
+                    "transactionRule": {"id": "rule-1"},
+                }
+            }
+        )
+        await client.update_transaction_rule("rule-1", set_category_id="cat-new")
+        sent = client.gql_call.await_args.kwargs["variables"]["input"]
+        self.assertEqual(sent["setMerchantAction"], "Darshana Avila")
+        self.assertEqual(sent["addTagsAction"], ["tag-1"])
+        self.assertEqual(sent["setCategoryAction"], "cat-new")
+
+    async def test_update_transaction_rule_refuses_split_rules(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={
+                "transactionRules": [
+                    self._rule(splitTransactionsAction={"splitsInfo": []})
+                ]
+            }
+        )
+        client.gql_call = AsyncMock()
+        with self.assertRaisesRegex(NotImplementedError, "splitTransactionsAction"):
             await client.update_transaction_rule("rule-1", set_category_id="cat-new")
         client.gql_call.assert_not_awaited()
 
