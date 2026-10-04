@@ -1992,6 +1992,79 @@ class MonarchMoney(object):
             operation="ManageGetCategoryGroups", graphql_query=query
         )
 
+    async def update_transaction_category(
+        self,
+        category_id: str,
+        name: Optional[str] = None,
+        icon: Optional[str] = None,
+        group_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Updates a transaction category. Only the fields you pass are changed.
+
+        :param category_id: the id of the category to update.
+        :param name: new name.
+        :param icon: new icon (unicode string or emoji).
+        :param group_id: move the category into this category group
+          (ids from get_transaction_category_groups).
+        :return: the updated category, including its group.
+        """
+        query = gql(
+            """
+            mutation Web_UpdateCategory($input: UpdateCategoryInput!) {
+                updateCategory(input: $input) {
+                    errors {
+                        ...PayloadErrorFields
+                        __typename
+                    }
+                    category {
+                        id
+                        name
+                        icon
+                        group {
+                            id
+                            name
+                            type
+                            __typename
+                        }
+                        __typename
+                    }
+                    __typename
+                }
+            }
+
+            fragment PayloadErrorFields on PayloadError {
+                fieldErrors {
+                    field
+                    messages
+                    __typename
+                }
+                message
+                code
+                __typename
+            }
+            """
+        )
+        category_input: Dict[str, Any] = {"id": category_id}
+        if name is not None:
+            category_input["name"] = name
+        if icon is not None:
+            category_input["icon"] = icon
+        if group_id is not None:
+            category_input["group"] = group_id
+
+        response = await self.gql_call(
+            operation="Web_UpdateCategory",
+            graphql_query=query,
+            variables={"input": category_input},
+        )
+        payload = response["updateCategory"]
+        if self._has_payload_errors(payload.get("errors")) or not payload.get(
+            "category"
+        ):
+            raise RequestFailedException(payload.get("errors"))
+        return payload["category"]
+
     async def create_transaction_category(
         self,
         group_id: str,
@@ -4535,6 +4608,271 @@ class MonarchMoney(object):
             operation="GetTransactionRules",
             graphql_query=query,
         )
+
+    _TRANSACTION_RULE_CRITERIA_FIELDS = (
+        "merchantCriteriaUseOriginalStatement",
+        "merchantCriteria",
+        "originalStatementCriteria",
+        "merchantNameCriteria",
+        "amountCriteria",
+        "categoryIds",
+        "accountIds",
+    )
+
+    # Rule fields update_transaction_rule does not round-trip yet. Updating a
+    # rule that uses any of these could silently drop them, so it refuses.
+    _TRANSACTION_RULE_UNSUPPORTED_FIELDS = (
+        "criteriaOwnerIsJoint",
+        "criteriaOwnerUserIds",
+        "criteriaBusinessEntityIds",
+        "criteriaBusinessEntityIsUnassigned",
+        "setMerchantAction",
+        "addTagsAction",
+        "linkGoalAction",
+        "linkSavingsGoalAction",
+        "needsReviewByUserAction",
+        "unassignNeedsReviewByUserAction",
+        "sendNotificationAction",
+        "setHideFromReportsAction",
+        "setLinkToPaydownBudgetAction",
+        "reviewStatusAction",
+        "actionSetOwnerIsJoint",
+        "actionSetOwner",
+        "actionSetBusinessEntity",
+        "actionSetBusinessEntityIsUnassigned",
+        "splitTransactionsAction",
+    )
+
+    _TRANSACTION_RULE_MUTATION_ERRORS = """
+                fragment PayloadErrorFields on PayloadError {
+                    fieldErrors {
+                        field
+                        messages
+                        __typename
+                    }
+                    message
+                    code
+                    __typename
+                }
+    """
+
+    @staticmethod
+    def _strip_typename(value: Any) -> Any:
+        if isinstance(value, list):
+            return [MonarchMoney._strip_typename(v) for v in value]
+        if isinstance(value, dict):
+            return {
+                k: MonarchMoney._strip_typename(v)
+                for k, v in value.items()
+                if k != "__typename"
+            }
+        return value
+
+    @staticmethod
+    def _has_payload_errors(errors: Any) -> bool:
+        if not errors:
+            return False
+        if isinstance(errors, dict):
+            return bool(
+                errors.get("message")
+                or errors.get("fieldErrors")
+                or errors.get("code")
+            )
+        return True
+
+    async def create_transaction_rule(
+        self,
+        set_category_id: str,
+        merchant_criteria: Optional[List[Dict[str, str]]] = None,
+        merchant_criteria_use_original_statement: bool = False,
+        amount_criteria: Optional[Dict[str, Any]] = None,
+        category_ids: Optional[List[str]] = None,
+        account_ids: Optional[List[str]] = None,
+        apply_to_existing_transactions: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Creates a transaction rule that recategorizes matching transactions.
+
+        :param set_category_id: the category id to assign when the rule matches.
+        :param merchant_criteria: list of conditions on the merchant, e.g.
+          [{"operator": "eq", "value": "walgreens"}] or
+          [{"operator": "contains", "value": "pharmac"}].
+        :param merchant_criteria_use_original_statement: match merchant_criteria
+          against the original bank statement text instead of the merchant name.
+        :param amount_criteria: e.g. {"operator": "gt", "isExpense": True,
+          "value": 20, "valueRange": None}.
+        :param category_ids: only match transactions currently in these categories.
+        :param account_ids: only match transactions in these accounts.
+        :param apply_to_existing_transactions: also recategorize past matches.
+        :return: the created rule ({"id": ...}).
+        """
+        query = gql(
+            """
+            mutation Common_CreateTransactionRuleMutationV2($input: CreateTransactionRuleInput!) {
+                createTransactionRuleV2(input: $input) {
+                    errors {
+                        ...PayloadErrorFields
+                        __typename
+                    }
+                    transactionRule {
+                        id
+                        __typename
+                    }
+                    __typename
+                }
+            }
+            """
+            + self._TRANSACTION_RULE_MUTATION_ERRORS
+        )
+        rule_input: Dict[str, Any] = {
+            "merchantCriteria": merchant_criteria,
+            "merchantCriteriaUseOriginalStatement": merchant_criteria_use_original_statement,
+            "amountCriteria": amount_criteria,
+            "categoryIds": category_ids,
+            "accountIds": account_ids,
+            "setCategoryAction": set_category_id,
+            "applyToExistingTransactions": apply_to_existing_transactions,
+        }
+        response = await self.gql_call(
+            operation="Common_CreateTransactionRuleMutationV2",
+            graphql_query=query,
+            variables={"input": rule_input},
+        )
+        payload = response["createTransactionRuleV2"]
+        if self._has_payload_errors(payload.get("errors")) or not payload.get(
+            "transactionRule"
+        ):
+            raise RequestFailedException(payload.get("errors"))
+        return payload["transactionRule"]
+
+    async def update_transaction_rule(
+        self,
+        rule_id: str,
+        set_category_id: Optional[str] = None,
+        merchant_criteria: Optional[List[Dict[str, str]]] = None,
+        merchant_criteria_use_original_statement: Optional[bool] = None,
+        amount_criteria: Optional[Dict[str, Any]] = None,
+        category_ids: Optional[List[str]] = None,
+        account_ids: Optional[List[str]] = None,
+        apply_to_existing_transactions: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Updates an existing transaction rule.
+
+        Monarch's update mutation does not support partial updates: an input that
+        omits the rule's existing criteria returns an empty error payload and
+        changes nothing. This method therefore reads the current rule first and
+        sends its existing criteria along with the fields you change.
+
+        :param rule_id: the id of the rule (from get_transaction_rules).
+        :param set_category_id: new category id to assign when the rule matches.
+        :param merchant_criteria, merchant_criteria_use_original_statement,
+          amount_criteria, category_ids, account_ids: replace those criteria.
+        :param apply_to_existing_transactions: also recategorize past matches.
+        :return: the updated rule ({"id": ...}).
+        """
+        rules = (await self.get_transaction_rules())["transactionRules"]
+        current = next((r for r in rules if r["id"] == rule_id), None)
+        if current is None:
+            raise RequestFailedException(f"Transaction rule {rule_id} not found")
+
+        unsupported = [
+            field
+            for field in self._TRANSACTION_RULE_UNSUPPORTED_FIELDS
+            if current.get(field)
+        ]
+        if unsupported:
+            raise NotImplementedError(
+                "update_transaction_rule only supports rules whose action is "
+                "setting a category. This rule also uses: " + ", ".join(unsupported)
+            )
+
+        rule_input: Dict[str, Any] = {
+            "id": rule_id,
+            "applyToExistingTransactions": apply_to_existing_transactions,
+        }
+        for field in self._TRANSACTION_RULE_CRITERIA_FIELDS:
+            if current.get(field) is not None:
+                rule_input[field] = self._strip_typename(current[field])
+        if current.get("setCategoryAction"):
+            rule_input["setCategoryAction"] = current["setCategoryAction"]["id"]
+
+        overrides = {
+            "setCategoryAction": set_category_id,
+            "merchantCriteria": merchant_criteria,
+            "merchantCriteriaUseOriginalStatement": merchant_criteria_use_original_statement,
+            "amountCriteria": amount_criteria,
+            "categoryIds": category_ids,
+            "accountIds": account_ids,
+        }
+        rule_input.update({k: v for k, v in overrides.items() if v is not None})
+
+        query = gql(
+            """
+            mutation Common_UpdateTransactionRuleMutationV2($input: UpdateTransactionRuleInput!) {
+                updateTransactionRuleV2(input: $input) {
+                    errors {
+                        ...PayloadErrorFields
+                        __typename
+                    }
+                    transactionRule {
+                        id
+                        __typename
+                    }
+                    __typename
+                }
+            }
+            """
+            + self._TRANSACTION_RULE_MUTATION_ERRORS
+        )
+        response = await self.gql_call(
+            operation="Common_UpdateTransactionRuleMutationV2",
+            graphql_query=query,
+            variables={"input": rule_input},
+        )
+        payload = response["updateTransactionRuleV2"]
+        if self._has_payload_errors(payload.get("errors")) or not payload.get(
+            "transactionRule"
+        ):
+            raise RequestFailedException(
+                payload.get("errors") or f"Transaction rule {rule_id} was not updated"
+            )
+        return payload["transactionRule"]
+
+    async def delete_transaction_rule(self, rule_id: str) -> bool:
+        """
+        Deletes a transaction rule.
+
+        Note: Monarch returns ``deleted: false`` even when the delete succeeds,
+        so success is judged by the absence of errors. Deleting an id that does
+        not exist raises a "Not found" error.
+
+        :param rule_id: the id of the rule (from get_transaction_rules).
+        """
+        query = gql(
+            """
+            mutation Common_DeleteTransactionRule($id: ID!) {
+                deleteTransactionRule(id: $id) {
+                    deleted
+                    errors {
+                        ...PayloadErrorFields
+                        __typename
+                    }
+                    __typename
+                }
+            }
+            """
+            + self._TRANSACTION_RULE_MUTATION_ERRORS
+        )
+        response = await self.gql_call(
+            operation="Common_DeleteTransactionRule",
+            graphql_query=query,
+            variables={"id": rule_id},
+        )
+        payload = response["deleteTransactionRule"]
+        if self._has_payload_errors(payload.get("errors")):
+            raise RequestFailedException(payload.get("errors"))
+        return True
 
     async def get_savings_goal_events(
         self,

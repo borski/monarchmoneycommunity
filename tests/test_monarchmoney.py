@@ -7,7 +7,7 @@ import json
 from gql import Client
 from graphql import print_ast
 from monarchmoney import MonarchMoney
-from monarchmoney.monarchmoney import LoginFailedException
+from monarchmoney.monarchmoney import LoginFailedException, RequestFailedException
 
 
 class TestMonarchMoney(unittest.IsolatedAsyncioTestCase):
@@ -591,6 +591,147 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ValueError, "max_pages must be positive"):
                 await client.find_duplicate_transactions(max_pages=max_pages)
         client.get_transactions.assert_not_awaited()
+
+
+    def _rule(self, **overrides):
+        rule = {
+            "id": "rule-1",
+            "merchantCriteriaUseOriginalStatement": False,
+            "merchantCriteria": None,
+            "originalStatementCriteria": None,
+            "merchantNameCriteria": [
+                {"operator": "eq", "value": "raul maciel", "__typename": "X"}
+            ],
+            "amountCriteria": None,
+            "categoryIds": None,
+            "accountIds": None,
+            "criteriaOwnerIsJoint": False,
+            "setCategoryAction": {"id": "cat-old", "name": "Home Maintenance"},
+            "addTagsAction": None,
+            "setHideFromReportsAction": False,
+        }
+        rule.update(overrides)
+        return rule
+
+    async def test_update_transaction_rule_resends_existing_criteria(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={"transactionRules": [self._rule()]}
+        )
+        client.gql_call = AsyncMock(
+            return_value={
+                "updateTransactionRuleV2": {
+                    "errors": None,
+                    "transactionRule": {"id": "rule-1"},
+                }
+            }
+        )
+        result = await client.update_transaction_rule(
+            "rule-1", set_category_id="cat-new"
+        )
+        self.assertEqual(result, {"id": "rule-1"})
+        sent = client.gql_call.await_args.kwargs["variables"]["input"]
+        self.assertEqual(
+            sent,
+            {
+                "id": "rule-1",
+                "applyToExistingTransactions": False,
+                "merchantCriteriaUseOriginalStatement": False,
+                "merchantNameCriteria": [{"operator": "eq", "value": "raul maciel"}],
+                "setCategoryAction": "cat-new",
+            },
+        )
+
+    async def test_update_transaction_rule_raises_on_silent_noop(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={"transactionRules": [self._rule()]}
+        )
+        client.gql_call = AsyncMock(
+            return_value={
+                "updateTransactionRuleV2": {
+                    "errors": {"fieldErrors": None, "message": None, "code": None},
+                    "transactionRule": None,
+                }
+            }
+        )
+        with self.assertRaises(RequestFailedException):
+            await client.update_transaction_rule("rule-1", set_category_id="cat-new")
+
+    async def test_update_transaction_rule_refuses_unsupported_actions(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={
+                "transactionRules": [self._rule(setHideFromReportsAction=True)]
+            }
+        )
+        client.gql_call = AsyncMock()
+        with self.assertRaisesRegex(NotImplementedError, "setHideFromReportsAction"):
+            await client.update_transaction_rule("rule-1", set_category_id="cat-new")
+        client.gql_call.assert_not_awaited()
+
+    async def test_update_transaction_rule_missing_rule(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(return_value={"transactionRules": []})
+        with self.assertRaises(RequestFailedException):
+            await client.update_transaction_rule("nope", set_category_id="cat-new")
+
+    async def test_create_transaction_rule(self):
+        client = MonarchMoney()
+        client.gql_call = AsyncMock(
+            return_value={
+                "createTransactionRuleV2": {
+                    "errors": None,
+                    "transactionRule": {"id": "rule-9"},
+                }
+            }
+        )
+        result = await client.create_transaction_rule(
+            "cat-rx", merchant_criteria=[{"operator": "eq", "value": "walgreens"}]
+        )
+        self.assertEqual(result, {"id": "rule-9"})
+        sent = client.gql_call.await_args.kwargs["variables"]["input"]
+        self.assertEqual(sent["setCategoryAction"], "cat-rx")
+        self.assertEqual(
+            sent["merchantCriteria"], [{"operator": "eq", "value": "walgreens"}]
+        )
+        self.assertFalse(sent["applyToExistingTransactions"])
+
+    async def test_delete_transaction_rule_ignores_deleted_false(self):
+        client = MonarchMoney()
+        client.gql_call = AsyncMock(
+            return_value={"deleteTransactionRule": {"deleted": False, "errors": None}}
+        )
+        self.assertTrue(await client.delete_transaction_rule("rule-1"))
+        self.assertEqual(
+            client.gql_call.await_args.kwargs["variables"], {"id": "rule-1"}
+        )
+
+    async def test_delete_transaction_rule_raises_on_errors(self):
+        client = MonarchMoney()
+        client.gql_call = AsyncMock(
+            return_value={
+                "deleteTransactionRule": {
+                    "deleted": False,
+                    "errors": {"message": "nope", "fieldErrors": None, "code": None},
+                }
+            }
+        )
+        with self.assertRaises(RequestFailedException):
+            await client.delete_transaction_rule("rule-1")
+
+    async def test_update_transaction_category_moves_group(self):
+        client = MonarchMoney()
+        category = {"id": "cat-1", "name": "Fertility", "group": {"id": "grp-2"}}
+        client.gql_call = AsyncMock(
+            return_value={"updateCategory": {"errors": None, "category": category}}
+        )
+        result = await client.update_transaction_category("cat-1", group_id="grp-2")
+        self.assertEqual(result, category)
+        self.assertEqual(
+            client.gql_call.await_args.kwargs["variables"],
+            {"input": {"id": "cat-1", "group": "grp-2"}},
+        )
 
 
 if __name__ == "__main__":
