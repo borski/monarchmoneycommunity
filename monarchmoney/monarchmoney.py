@@ -4555,9 +4555,7 @@ class MonarchMoney(object):
             return False
         if isinstance(errors, dict):
             return bool(
-                errors.get("message")
-                or errors.get("fieldErrors")
-                or errors.get("code")
+                errors.get("message") or errors.get("fieldErrors") or errors.get("code")
             )
         return True
 

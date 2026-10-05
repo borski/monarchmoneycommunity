@@ -592,7 +592,6 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
                 await client.find_duplicate_transactions(max_pages=max_pages)
         client.get_transactions.assert_not_awaited()
 
-
     async def test_create_transaction_rule(self):
         client = MonarchMoney()
         client.gql_call = AsyncMock(
@@ -613,6 +612,7 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
             sent["merchantCriteria"], [{"operator": "eq", "value": "walgreens"}]
         )
         self.assertFalse(sent["applyToExistingTransactions"])
+
 
 if __name__ == "__main__":
     unittest.main()
