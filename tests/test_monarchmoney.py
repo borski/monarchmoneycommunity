@@ -592,7 +592,6 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
                 await client.find_duplicate_transactions(max_pages=max_pages)
         client.get_transactions.assert_not_awaited()
 
-
     def _rule(self, **overrides):
         rule = {
             "id": "rule-1",
@@ -722,6 +721,7 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
         client.get_transaction_rules = AsyncMock(return_value={"transactionRules": []})
         with self.assertRaises(RequestFailedException):
             await client.update_transaction_rule("nope", set_category_id="cat-new")
+
 
 if __name__ == "__main__":
     unittest.main()

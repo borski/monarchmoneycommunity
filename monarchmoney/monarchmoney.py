@@ -4599,9 +4599,7 @@ class MonarchMoney(object):
             return False
         if isinstance(errors, dict):
             return bool(
-                errors.get("message")
-                or errors.get("fieldErrors")
-                or errors.get("code")
+                errors.get("message") or errors.get("fieldErrors") or errors.get("code")
             )
         return True
 
@@ -4660,7 +4658,9 @@ class MonarchMoney(object):
             rule_input[field] = self._strip_typename(current.get(field))
         category_action = current.get("setCategoryAction")
         merchant_action = current.get("setMerchantAction")
-        rule_input["setCategoryAction"] = category_action["id"] if category_action else None
+        rule_input["setCategoryAction"] = (
+            category_action["id"] if category_action else None
+        )
         # setMerchantAction takes the merchant *name*. Passing an id creates a
         # new merchant literally named after that id.
         rule_input["setMerchantAction"] = (
