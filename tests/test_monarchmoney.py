@@ -592,7 +592,6 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
                 await client.find_duplicate_transactions(max_pages=max_pages)
         client.get_transactions.assert_not_awaited()
 
-
     async def test_update_transaction_category_moves_group(self):
         client = MonarchMoney()
         category = {"id": "cat-1", "name": "Fertility", "group": {"id": "grp-2"}}
