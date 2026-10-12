@@ -4759,6 +4759,34 @@ class MonarchMoney(object):
         }
         rule_input.update({k: v for k, v in overrides.items() if v is not _UNSET})
 
+        if merchant_criteria is not _UNSET:
+            # Newer rules use one of these fields instead of merchantCriteria.
+            # Replace the active matcher and clear the other representations so
+            # an old condition cannot survive a replacement (or explicit None).
+            newer_fields = ("originalStatementCriteria", "merchantNameCriteria")
+            active_newer = [
+                field for field in newer_fields if current.get(field) is not None
+            ]
+            if not active_newer:
+                target_field = "merchantCriteria"
+            elif merchant_criteria_use_original_statement is not _UNSET:
+                target_field = (
+                    "originalStatementCriteria"
+                    if merchant_criteria_use_original_statement
+                    else "merchantNameCriteria"
+                )
+            elif len(active_newer) == 1:
+                target_field = active_newer[0]
+            else:
+                target_field = (
+                    "originalStatementCriteria"
+                    if current.get("merchantCriteriaUseOriginalStatement")
+                    else "merchantNameCriteria"
+                )
+            for field in ("merchantCriteria", *newer_fields):
+                rule_input[field] = None
+            rule_input[target_field] = merchant_criteria
+
         query = gql(
             """
             mutation Common_UpdateTransactionRuleMutationV2($input: UpdateTransactionRuleInput!) {

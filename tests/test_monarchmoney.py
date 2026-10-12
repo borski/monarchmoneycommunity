@@ -743,6 +743,74 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(sent[other_field], expected)
                 json.dumps(sent)
 
+    async def test_update_transaction_rule_replaces_or_clears_active_merchant(self):
+        old_criterion = [{"operator": "eq", "value": "old merchant"}]
+        replacement = [{"operator": "contains", "value": "new merchant"}]
+        merchant_fields = (
+            "merchantCriteria",
+            "originalStatementCriteria",
+            "merchantNameCriteria",
+        )
+        for active_field in ("merchantNameCriteria", "originalStatementCriteria"):
+            for value in (replacement, None):
+                with self.subTest(active_field=active_field, value=value):
+                    current = self._rule(
+                        merchantCriteria=old_criterion,
+                        merchantNameCriteria=None,
+                        originalStatementCriteria=None,
+                    )
+                    current[active_field] = old_criterion
+                    client = MonarchMoney()
+                    client.get_transaction_rules = AsyncMock(
+                        return_value={"transactionRules": [current]}
+                    )
+                    client.gql_call = AsyncMock(
+                        return_value={
+                            "updateTransactionRuleV2": {
+                                "errors": None,
+                                "transactionRule": {"id": "rule-1"},
+                            }
+                        }
+                    )
+
+                    await client.update_transaction_rule(
+                        "rule-1", merchant_criteria=value
+                    )
+
+                    sent = client.gql_call.await_args.kwargs["variables"]["input"]
+                    for field in merchant_fields:
+                        self.assertEqual(
+                            sent[field], value if field == active_field else None
+                        )
+                    self.assertEqual(sent["setCategoryAction"], "cat-old")
+
+    async def test_update_transaction_rule_switches_active_merchant_field(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={"transactionRules": [self._rule()]}
+        )
+        client.gql_call = AsyncMock(
+            return_value={
+                "updateTransactionRuleV2": {
+                    "errors": None,
+                    "transactionRule": {"id": "rule-1"},
+                }
+            }
+        )
+
+        criteria = [{"operator": "eq", "value": "new statement"}]
+        await client.update_transaction_rule(
+            "rule-1",
+            merchant_criteria=criteria,
+            merchant_criteria_use_original_statement=True,
+        )
+
+        sent = client.gql_call.await_args.kwargs["variables"]["input"]
+        self.assertEqual(sent["originalStatementCriteria"], criteria)
+        self.assertIsNone(sent["merchantNameCriteria"])
+        self.assertIsNone(sent["merchantCriteria"])
+        self.assertIs(sent["merchantCriteriaUseOriginalStatement"], True)
+
     async def test_update_transaction_rule_sends_false_and_empty_lists(self):
         client = MonarchMoney()
         client.get_transaction_rules = AsyncMock(
@@ -778,7 +846,8 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
 
         sent = client.gql_call.await_args.kwargs["variables"]["input"]
         self.assertIs(sent["merchantCriteriaUseOriginalStatement"], False)
-        self.assertEqual(sent["merchantCriteria"], [])
+        self.assertIsNone(sent["merchantCriteria"])
+        self.assertEqual(sent["merchantNameCriteria"], [])
         self.assertEqual(sent["amountCriteria"]["value"], 0)
         self.assertEqual(sent["categoryIds"], [])
         self.assertEqual(sent["accountIds"], [])
