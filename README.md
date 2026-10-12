@@ -268,8 +268,8 @@ As of writing this README, the following methods are supported:
       <td>creates a category for transactions</td>
     </tr>
     <tr>
-      <td><code>delete_transaction_rule</code></td>
-      <td>deletes a transaction rule</td>
+      <td><code>delete_transaction_rule(rule_id)</code></td>
+      <td>deletes a transaction rule by its required string <code>rule_id</code> from <code>get_transaction_rules()</code>. Example: <code>await mm.delete_transaction_rule("rule-1")</code>. Returns <code>True</code> when the payload has no errors, even if <code>deleted</code> is <code>False</code>. Raises <code>RequestFailedException</code> for payload errors.</td>
     </tr>
     <tr>
       <td><code>request_accounts_refresh</code></td>
