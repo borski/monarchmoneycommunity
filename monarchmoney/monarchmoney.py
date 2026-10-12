@@ -4393,6 +4393,41 @@ class MonarchMoney(object):
             variables={"input": {"id": goal_id}},
         )
 
+    async def delete_transaction_rule(self, rule_id: str) -> bool:
+        """
+        Deletes a transaction rule.
+
+        Note: Monarch returns ``deleted: false`` even when the delete succeeds,
+        so success is judged by the absence of errors. Deleting an id that does
+        not exist raises a "Not found" error.
+
+        :param rule_id: the id of the rule (from get_transaction_rules).
+        """
+        query = gql(
+            """
+            mutation Common_DeleteTransactionRule($id: ID!) {
+                deleteTransactionRule(id: $id) {
+                    deleted
+                    errors {
+                        ...PayloadErrorFields
+                        __typename
+                    }
+                    __typename
+                }
+            }
+            """
+            + self._TRANSACTION_RULE_MUTATION_ERRORS
+        )
+        response = await self.gql_call(
+            operation="Common_DeleteTransactionRule",
+            graphql_query=query,
+            variables={"id": rule_id},
+        )
+        payload = response["deleteTransactionRule"]
+        if self._has_payload_errors(payload.get("errors")):
+            raise RequestFailedException(payload.get("errors"))
+        return True
+
     async def get_transaction_rules(self) -> Dict[str, Any]:
         """
         Gets all transaction rules configured in the account.
@@ -4559,23 +4594,42 @@ class MonarchMoney(object):
             )
         return True
 
-    async def delete_transaction_rule(self, rule_id: str) -> bool:
+    async def create_transaction_rule(
+        self,
+        set_category_id: str,
+        merchant_criteria: Optional[List[Dict[str, str]]] = None,
+        merchant_criteria_use_original_statement: bool = False,
+        amount_criteria: Optional[Dict[str, Any]] = None,
+        category_ids: Optional[List[str]] = None,
+        account_ids: Optional[List[str]] = None,
+        apply_to_existing_transactions: bool = False,
+    ) -> Dict[str, Any]:
         """
-        Deletes a transaction rule.
+        Creates a transaction rule that recategorizes matching transactions.
 
-        Note: Monarch returns ``deleted: false`` even when the delete succeeds,
-        so success is judged by the absence of errors. Deleting an id that does
-        not exist raises a "Not found" error.
-
-        :param rule_id: the id of the rule (from get_transaction_rules).
+        :param set_category_id: the category id to assign when the rule matches.
+        :param merchant_criteria: list of conditions on the merchant, e.g.
+          [{"operator": "eq", "value": "walgreens"}] or
+          [{"operator": "contains", "value": "pharmac"}].
+        :param merchant_criteria_use_original_statement: match merchant_criteria
+          against the original bank statement text instead of the merchant name.
+        :param amount_criteria: e.g. {"operator": "gt", "isExpense": True,
+          "value": 20, "valueRange": None}.
+        :param category_ids: only match transactions currently in these categories.
+        :param account_ids: only match transactions in these accounts.
+        :param apply_to_existing_transactions: also recategorize past matches.
+        :return: the created rule ({"id": ...}).
         """
         query = gql(
             """
-            mutation Common_DeleteTransactionRule($id: ID!) {
-                deleteTransactionRule(id: $id) {
-                    deleted
+            mutation Common_CreateTransactionRuleMutationV2($input: CreateTransactionRuleInput!) {
+                createTransactionRuleV2(input: $input) {
                     errors {
                         ...PayloadErrorFields
+                        __typename
+                    }
+                    transactionRule {
+                        id
                         __typename
                     }
                     __typename
@@ -4584,15 +4638,26 @@ class MonarchMoney(object):
             """
             + self._TRANSACTION_RULE_MUTATION_ERRORS
         )
+        rule_input: Dict[str, Any] = {
+            "merchantCriteria": merchant_criteria,
+            "merchantCriteriaUseOriginalStatement": merchant_criteria_use_original_statement,
+            "amountCriteria": amount_criteria,
+            "categoryIds": category_ids,
+            "accountIds": account_ids,
+            "setCategoryAction": set_category_id,
+            "applyToExistingTransactions": apply_to_existing_transactions,
+        }
         response = await self.gql_call(
-            operation="Common_DeleteTransactionRule",
+            operation="Common_CreateTransactionRuleMutationV2",
             graphql_query=query,
-            variables={"id": rule_id},
+            variables={"input": rule_input},
         )
-        payload = response["deleteTransactionRule"]
-        if self._has_payload_errors(payload.get("errors")):
+        payload = response["createTransactionRuleV2"]
+        if self._has_payload_errors(payload.get("errors")) or not payload.get(
+            "transactionRule"
+        ):
             raise RequestFailedException(payload.get("errors"))
-        return True
+        return payload["transactionRule"]
 
     async def get_savings_goal_events(
         self,

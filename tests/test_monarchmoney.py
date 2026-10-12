@@ -584,14 +584,6 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
                     list(range(0, expected_count, 2)),
                 )
 
-    async def test_nonpositive_page_limit_is_rejected_before_requests(self):
-        client = MonarchMoney()
-        client.get_transactions = AsyncMock()
-        for max_pages in (0, -1):
-            with self.assertRaisesRegex(ValueError, "max_pages must be positive"):
-                await client.find_duplicate_transactions(max_pages=max_pages)
-        client.get_transactions.assert_not_awaited()
-
     async def test_delete_transaction_rule_ignores_deleted_false(self):
         client = MonarchMoney()
         client.gql_call = AsyncMock(
@@ -614,6 +606,35 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(RequestFailedException):
             await client.delete_transaction_rule("rule-1")
+
+    async def test_nonpositive_page_limit_is_rejected_before_requests(self):
+        client = MonarchMoney()
+        client.get_transactions = AsyncMock()
+        for max_pages in (0, -1):
+            with self.assertRaisesRegex(ValueError, "max_pages must be positive"):
+                await client.find_duplicate_transactions(max_pages=max_pages)
+        client.get_transactions.assert_not_awaited()
+
+    async def test_create_transaction_rule(self):
+        client = MonarchMoney()
+        client.gql_call = AsyncMock(
+            return_value={
+                "createTransactionRuleV2": {
+                    "errors": None,
+                    "transactionRule": {"id": "rule-9"},
+                }
+            }
+        )
+        result = await client.create_transaction_rule(
+            "cat-rx", merchant_criteria=[{"operator": "eq", "value": "walgreens"}]
+        )
+        self.assertEqual(result, {"id": "rule-9"})
+        sent = client.gql_call.await_args.kwargs["variables"]["input"]
+        self.assertEqual(sent["setCategoryAction"], "cat-rx")
+        self.assertEqual(
+            sent["merchantCriteria"], [{"operator": "eq", "value": "walgreens"}]
+        )
+        self.assertFalse(sent["applyToExistingTransactions"])
 
 
 if __name__ == "__main__":
