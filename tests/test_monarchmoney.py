@@ -648,6 +648,122 @@ class TestDuplicateTransactions(unittest.IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_update_transaction_rule_preserves_omitted_arguments(self):
+        current = self._rule(
+            merchantCriteriaUseOriginalStatement=True,
+            merchantCriteria=[{"operator": "contains", "value": "example"}],
+            amountCriteria={"operator": "gt", "value": 10, "isExpense": True},
+            categoryIds=["cat-filter"],
+            accountIds=["account-1"],
+        )
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={"transactionRules": [current]}
+        )
+        client.gql_call = AsyncMock(
+            return_value={
+                "updateTransactionRuleV2": {
+                    "errors": None,
+                    "transactionRule": {"id": "rule-1"},
+                }
+            }
+        )
+
+        await client.update_transaction_rule("rule-1")
+
+        sent = client.gql_call.await_args.kwargs["variables"]["input"]
+        for field in client._TRANSACTION_RULE_CRITERIA_FIELDS:
+            self.assertEqual(sent[field], client._strip_typename(current[field]))
+        self.assertEqual(sent["setCategoryAction"], "cat-old")
+        json.dumps(sent)
+
+    async def test_update_transaction_rule_sends_explicit_nulls(self):
+        current = self._rule(
+            merchantCriteriaUseOriginalStatement=True,
+            merchantCriteria=[{"operator": "contains", "value": "example"}],
+            amountCriteria={"operator": "gt", "value": 10, "isExpense": True},
+            categoryIds=["cat-filter"],
+            accountIds=["account-1"],
+        )
+        fields = {
+            "set_category_id": "setCategoryAction",
+            "merchant_criteria": "merchantCriteria",
+            "merchant_criteria_use_original_statement": "merchantCriteriaUseOriginalStatement",
+            "amount_criteria": "amountCriteria",
+            "category_ids": "categoryIds",
+            "account_ids": "accountIds",
+        }
+        for argument, field in fields.items():
+            with self.subTest(argument=argument):
+                client = MonarchMoney()
+                client.get_transaction_rules = AsyncMock(
+                    return_value={"transactionRules": [current]}
+                )
+                client.gql_call = AsyncMock(
+                    return_value={
+                        "updateTransactionRuleV2": {
+                            "errors": None,
+                            "transactionRule": {"id": "rule-1"},
+                        }
+                    }
+                )
+
+                await client.update_transaction_rule("rule-1", **{argument: None})
+
+                sent = client.gql_call.await_args.kwargs["variables"]["input"]
+                self.assertIsNone(sent[field])
+                for other_field in fields.values():
+                    if other_field != field:
+                        expected = (
+                            "cat-old"
+                            if other_field == "setCategoryAction"
+                            else current[other_field]
+                        )
+                        self.assertEqual(sent[other_field], expected)
+                json.dumps(sent)
+
+    async def test_update_transaction_rule_sends_false_and_empty_lists(self):
+        client = MonarchMoney()
+        client.get_transaction_rules = AsyncMock(
+            return_value={
+                "transactionRules": [
+                    self._rule(
+                        merchantCriteriaUseOriginalStatement=True,
+                        merchantCriteria=[{"operator": "eq", "value": "example"}],
+                        categoryIds=["cat-filter"],
+                        accountIds=["account-1"],
+                    )
+                ]
+            }
+        )
+        client.gql_call = AsyncMock(
+            return_value={
+                "updateTransactionRuleV2": {
+                    "errors": None,
+                    "transactionRule": {"id": "rule-1"},
+                }
+            }
+        )
+
+        await client.update_transaction_rule(
+            "rule-1",
+            merchant_criteria_use_original_statement=False,
+            merchant_criteria=[],
+            amount_criteria={"operator": "gt", "value": 0, "isExpense": True},
+            category_ids=[],
+            account_ids=[],
+            apply_to_existing_transactions=True,
+        )
+
+        sent = client.gql_call.await_args.kwargs["variables"]["input"]
+        self.assertIs(sent["merchantCriteriaUseOriginalStatement"], False)
+        self.assertEqual(sent["merchantCriteria"], [])
+        self.assertEqual(sent["amountCriteria"]["value"], 0)
+        self.assertEqual(sent["categoryIds"], [])
+        self.assertEqual(sent["accountIds"], [])
+        self.assertIs(sent["applyToExistingTransactions"], True)
+        self.assertEqual(sent["setCategoryAction"], "cat-old")
+
     async def test_update_transaction_rule_raises_on_silent_noop(self):
         client = MonarchMoney()
         client.get_transaction_rules = AsyncMock(

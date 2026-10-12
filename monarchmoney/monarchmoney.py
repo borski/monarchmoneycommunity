@@ -87,6 +87,13 @@ class CaptchaRequiredException(LoginFailedException):
     pass
 
 
+class _UnsetType:
+    """Distinguishes an omitted update argument from an explicit null."""
+
+
+_UNSET = _UnsetType()
+
+
 def _to_iso_date(
     value: Optional[Union[date, datetime, str]],
 ) -> Optional[str]:
@@ -4606,12 +4613,14 @@ class MonarchMoney(object):
     async def update_transaction_rule(
         self,
         rule_id: str,
-        set_category_id: Optional[str] = None,
-        merchant_criteria: Optional[List[Dict[str, str]]] = None,
-        merchant_criteria_use_original_statement: Optional[bool] = None,
-        amount_criteria: Optional[Dict[str, Any]] = None,
-        category_ids: Optional[List[str]] = None,
-        account_ids: Optional[List[str]] = None,
+        set_category_id: Union[str, None, _UnsetType] = _UNSET,
+        merchant_criteria: Union[List[Dict[str, str]], None, _UnsetType] = _UNSET,
+        merchant_criteria_use_original_statement: Union[
+            bool, None, _UnsetType
+        ] = _UNSET,
+        amount_criteria: Union[Dict[str, Any], None, _UnsetType] = _UNSET,
+        category_ids: Union[List[str], None, _UnsetType] = _UNSET,
+        account_ids: Union[List[str], None, _UnsetType] = _UNSET,
         apply_to_existing_transactions: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -4629,6 +4638,9 @@ class MonarchMoney(object):
         :param set_category_id: new category id to assign when the rule matches.
         :param merchant_criteria, merchant_criteria_use_original_statement,
           amount_criteria, category_ids, account_ids: replace those criteria.
+          Omitted arguments keep their current values. Explicit None is sent as
+          GraphQL null, allowing nullable criteria or the category action to be
+          cleared. False and empty lists are sent as provided.
         :param apply_to_existing_transactions: also recategorize past matches.
         :return: the updated rule ({"id": ...}).
         """
@@ -4680,7 +4692,7 @@ class MonarchMoney(object):
             "categoryIds": category_ids,
             "accountIds": account_ids,
         }
-        rule_input.update({k: v for k, v in overrides.items() if v is not None})
+        rule_input.update({k: v for k, v in overrides.items() if v is not _UNSET})
 
         query = gql(
             """
